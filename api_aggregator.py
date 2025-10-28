@@ -282,7 +282,7 @@ async def get_dashboard_html():
 
 # --- 6. CACHED API ENDPOINT ---
 
-@app.get("/api/dashboard", response_model=AggregatedData, summary="[Core] Get cached, aggregated metrics for the dashboard.")
+@app.get("/api/dashboard", response_model=AggregatedData, summary="[Core] Get cached, aggregated metrics for the dashboard.", tags=["Core Metrics"])
 async def get_aggregated_dashboard_data():
     if not IN_MEMORY_CACHE:
         raise HTTPException(
@@ -336,7 +336,7 @@ async def fetch_and_process_catalog_data(page: int, size: int, client: httpx.Asy
 
 # --- ALIEN ARTIFACTS DIVISION (Anomaly Detection & Novel Data) ---
 
-@app.get("/api/artifact/neo_clusters", summary="[Alien Artifacts] Paginated NEO Data for ML Clustering.")
+@app.get("/api/artifact/neo_clusters", summary="[Alien Artifacts] Paginated NEO Data for ML Clustering.", tags=["Alien Artifacts Division"])
 async def get_neo_clusters(
     page: int = Query(0, description="Page number (0-based index).", ge=0),
     size: int = Query(50, description="Items per page (Max 50).", ge=1, le=50)
@@ -345,7 +345,7 @@ async def get_neo_clusters(
     async with httpx.AsyncClient() as client:
         return await fetch_and_process_catalog_data(page, size, client)
         
-@app.get("/api/artifact/geomagnetic_data", summary="[Alien Artifacts] Latest Geomagnetic Field Data (Anomaly Search).")
+@app.get("/api/artifact/geomagnetic_data", summary="[Alien Artifacts] Latest Geomagnetic Field Data (Anomaly Search).", tags=["Alien Artifacts Division"])
 async def get_geomagnetic_data(
     lat: float = Query(51.5, description="Latitude (e.g., London)."),
     lon: float = Query(0.0, description="Longitude (e.g., London).")
@@ -366,7 +366,7 @@ async def get_geomagnetic_data(
         "notes": "Data mocked for stability. Use with caution for real analysis."
     }
 
-@app.get("/api/artifact/lunar_surface_grid", summary="[Alien Artifacts] Mocked High-Res Lunar Surface Grid Metadata.")
+@app.get("/api/artifact/lunar_surface_grid", summary="[Alien Artifacts] Mocked High-Res Lunar Surface Grid Metadata.", tags=["Alien Artifacts Division"])
 async def get_lunar_surface_grid():
     """
     Returns simulated high-resolution lunar imagery metadata grid points for anomaly detection.
@@ -404,7 +404,7 @@ async def get_lunar_surface_grid():
 
 # --- CELESTIAL CARTOGRAPHER (Mapping, Location & Spatial Data) ---
 
-@app.get("/api/cartographer/flyover_path", summary="[Cartographer] Mocked ISS Flyover Path (Guaranteed Data).")
+@app.get("/api/cartographer/flyover_path", summary="[Cartographer] Mocked ISS Flyover Path (Guaranteed Data).", tags=["Celestial Cartographer"])
 async def get_mock_iss_path():
     """Returns a mocked path (list of lat/lon points) for a guaranteed ISS visualization near London."""
     
@@ -421,7 +421,7 @@ async def get_mock_iss_path():
     }
 
 
-@app.get("/api/cartographer/launch_sites", summary="[Cartographer] Simplified SpaceX Launch Sites.")
+@app.get("/api/cartographer/launch_sites", summary="[Cartographer] Simplified SpaceX Launch Sites.", tags=["Celestial Cartographer"])
 async def get_simplified_launch_sites():
     """Returns a filtered list of SpaceX launch sites containing only essential map data."""
     url = f"{SPACEX_BASE}/v4/launchpads"
@@ -443,7 +443,7 @@ async def get_simplified_launch_sites():
     ]
 
 
-@app.get("/api/cartographer/geocode_location", summary="[Cartographer] Geocode Address to Coordinates.")
+@app.get("/api/cartographer/geocode_location", summary="[Cartographer] Geocode Address to Coordinates.", tags=["Celestial Cartographer"])
 async def geocode_location(
     address: str = Query(..., description="Address or place name to geocode (e.g., Kennedy Space Center).")
 ):
@@ -462,10 +462,10 @@ async def geocode_location(
         "display_name": first_result.get('display_name'),
         "latitude": first_result.get('lat'),
         "longitude": first_result.get('lon'),
-        "bounding_box": first_result.get('boundingbox')
+        "bounding_box": first_result.get('bounding_box')
     }
 
-@app.get("/api/cartographer/reverse_geocode", summary="[Cartographer] Convert Coordinates to Address/Place Name.")
+@app.get("/api/cartographer/reverse_geocode", summary="[Cartographer] Convert Coordinates to Address/Place Name.", tags=["Celestial Cartographer"])
 async def reverse_geocode_location(
     lat: float = Query(..., description="Latitude (e.g., 28.56)"),
     lon: float = Query(..., description="Longitude (e.g., -80.58)")
@@ -486,7 +486,7 @@ async def reverse_geocode_location(
     }
 
 
-@app.get("/api/cartographer/exoplanet_targets", summary="[Cartographer] Simplified Exoplanet Data for Mapping/Charting.")
+@app.get("/api/cartographer/exoplanet_targets", summary="[Cartographer] Simplified Exoplanet Data for Mapping/Charting.", tags=["Celestial Cartographer"])
 async def get_exoplanet_targets():
     """Returns a simplified dataset of recent exoplanet targets for celestial mapping and charting."""
     
@@ -527,7 +527,7 @@ async def get_exoplanet_targets():
 
 # --- AI TRACK ADVISOR (Predictive & Operational Status) ---
 
-@app.get("/api/advisor/latest_news", response_model=List[NewsArticle], summary="[AI Advisor] Get Latest Space News Articles.")
+@app.get("/api/advisor/latest_news", response_model=List[NewsArticle], summary="[AI Advisor] Get Latest Space News Articles.", tags=["AI Track Advisor"])
 async def get_latest_space_news():
     """Returns a simplified list of the most recent space and launch related news articles."""
     url = f"{NEWS_BASE}/articles?_limit=10&_sort=publishedAt&_contains=Space"
@@ -554,7 +554,7 @@ async def get_latest_space_news():
     return simplified_articles
 
 
-@app.get("/api/control/solar_storm_alert", summary="[Control] Simplified solar storm status (72h).")
+@app.get("/api/control/solar_storm_alert", summary="[Control] Simplified solar storm status (72h).", tags=["AI Track Advisor"])
 async def get_solar_storm_alert():
     """Checks the last 72 hours for coronal mass ejection (CME) events."""
     end_date = datetime.now().date().isoformat()
@@ -583,7 +583,7 @@ async def get_solar_storm_alert():
     }
 
 
-@app.get("/api/advisor/conjunction_risks", summary="[AI Advisor] Current Satellite Conjunction Risk Data (Space Debris).")
+@app.get("/api/advisor/conjunction_risks", summary="[AI Advisor] Current Satellite Conjunction Risk Data (Space Debris).", tags=["AI Track Advisor"])
 async def get_conjunction_risks():
     """
     Fetches mock data simulating recent conjunction events to provide a dataset 
@@ -626,7 +626,7 @@ async def get_conjunction_risks():
     }
 
 
-@app.get("/api/advisor/starlink_status", summary="[AI Advisor] Current Starlink Satellite Catalog Status.")
+@app.get("/api/advisor/starlink_status", summary="[AI Advisor] Current Starlink Satellite Catalog Status.", tags=["AI Track Advisor"])
 async def get_starlink_status():
     """
     Fetches the full catalog of Starlink satellites, providing a dense dataset 
@@ -658,7 +658,7 @@ async def get_starlink_status():
     return {"status": "OK", "count": len(operational_satellites), "satellites": operational_satellites}
 
 
-@app.get("/api/advisor/mission_telemetry", summary="[AI Advisor] Mock Time-Series Telemetry Data (Anomaly Prediction).")
+@app.get("/api/advisor/mission_telemetry", summary="[AI Advisor] Mock Time-Series Telemetry Data (Anomaly Prediction).", tags=["AI Track Advisor"])
 async def get_mission_telemetry():
     """
     Returns mock time-series data (simulating sensor readings) for predictive failure modeling.
@@ -688,7 +688,7 @@ async def get_mission_telemetry():
 
 # --- NEW: GPS CONSTELLATION HEALTH ---
 
-@app.get("/api/advisor/gps_health_status", summary="[AI Advisor] Mock GPS Constellation Health Metrics.")
+@app.get("/api/advisor/gps_health_status", summary="[AI Advisor] Mock GPS Constellation Health Metrics.", tags=["AI Track Advisor"])
 async def get_gps_health_status():
     """
     Returns mock metrics on GPS/GNSS satellite health (e.g., signal-to-noise ratio, drift) 
@@ -718,57 +718,5 @@ async def get_gps_health_status():
 
 
 # =========================================================================
-# --- 10. LEGACY PASSTHROUGH ENDPOINTS (Kept for compatibility) ---
+# --- 10. LEGACY PASSTHROUGH ENDPOINTS (DELETED) ---
 # =========================================================================
-
-@app.get("/api/nasa/apod", summary="[Legacy] Get Astronomy Picture of the Day.")
-async def get_apod_only():
-    async with httpx.AsyncClient() as client:
-        result = await fetch_api_data(EXTERNAL_APIS["nasa_apod"], client)
-    if "error" in result: raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"APOD Error: {result['error']}")
-    return result
-
-@app.get("/api/spacex/company", summary="[Legacy] Get SpaceX company information.")
-async def get_spacex_company():
-    url = f"{SPACEX_BASE}/v4/company"
-    async with httpx.AsyncClient() as client:
-        result = await fetch_api_data(url, client)
-    if "error" in result: raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"SpaceX Error: {result['error']}")
-    return result
-
-@app.get("/api/iss/iss-now", summary="[Legacy] Get the current ISS location.")
-async def get_iss_now():
-    # Use the data safely pulled from the separate ISS_CACHE
-    data = ISS_CACHE.get('iss_location', {})
-    if "error" in data: 
-         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"ISS Location Error: {data['error']}")
-    return data
-
-@app.get("/api/nasa/neo/catalog", summary="[Legacy] Browse paginated NEO catalog.")
-async def get_neo_browse_catalog_legacy(
-    page: int = Query(0, description="Page number (0-based index).", ge=0),
-    size: int = Query(50, description="Items per page (Max 50).", ge=1, le=50)
-):
-    """Uses the NEO Catalog to browse asteroids (limited data returned)."""
-    url = f"{NASA_BASE}/neo/rest/v1/neo/browse?page={page}&size={size}&api_key={NASA_API_KEY}"
-    async with httpx.AsyncClient() as client:
-        result = await fetch_api_data(url, client)
-    if "error" in result: raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"NEO Error: {result['error']}")
-    return result
-
-@app.get("/api/nasa/neo/feed", summary="[Legacy] Get raw NEO feed data for date range.")
-async def get_neo_feed_legacy(
-    start_date: date,
-    end_date: date
-):
-    """Returns the raw NEO feed data (requires start/end dates)."""
-    nasa_neo_url = (
-        f"{NASA_BASE}/neo/rest/v1/feed?"
-        f"start_date={start_date.isoformat()}&"
-        f"end_date={end_date.isoformat()}&"
-        f"api_key={NASA_API_KEY}"
-    )
-    async with httpx.AsyncClient() as client:
-        result = await fetch_api_data(nasa_neo_url, client)
-    if "error" in result: raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"NEO Feed Error: {result['error']}")
-    return result
