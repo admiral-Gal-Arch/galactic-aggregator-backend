@@ -136,9 +136,9 @@ async def refresh_and_cache_data():
     neo_list: List[Any] = neo_data.get('near_earth_objects', {}).get(today, [])
     
     if "error" in neo_data:
-         neo_count = neo_data['error']
+        neo_count = neo_data['error']
     else:
-         neo_count = f"{len(neo_list)} Asteroids"
+        neo_count = f"{len(neo_list)} Asteroids"
 
 
     new_data = {
@@ -347,6 +347,48 @@ async def get_epic_data():
     if "error" in result:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"EPIC Fetch Error: {result['error']}")
     return result
+# --- NEW ENDPOINT: NEO Catalog Browser ---
+@app.get("/api/nasa/neo/catalog", summary="Browse paginated NEO catalog (Live Fetch).")
+async def get_neo_browse_catalog(
+    page: int = Query(0, description="Page number (0-based index) for results.", ge=0),
+    size: int = Query(20, description="Number of items per page (Max 50).", ge=1, le=50)
+):
+    """
+    Returns a paginated list of all Near-Earth Objects available in the NASA NEO catalog.
+    """
+    url = (
+        f"{NASA_BASE}/neo/rest/v1/neo/browse?"
+        f"page={page}&"
+        f"size={size}&"
+        f"api_key={NASA_API_KEY}"
+    )
+
+    async with httpx.AsyncClient() as client:
+        result = await fetch_api_data(url, client)
+
+    if "error" in result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"NASA NEO Browse Fetch Error: {result['error']}"
+        )
+    # Filter the result to be clean before returning
+    return {
+        "links": result.get('links', {}),
+        "page": result.get('page', {}),
+        "near_earth_objects": [
+            {
+                "id": neo.get('id'),
+                "name": neo.get('name'),
+                "designation": neo.get('designation'),
+                "absolute_magnitude_h": neo.get('absolute_magnitude_h'),
+                "estimated_diameter_km": neo.get('estimated_diameter', {}).get('kilometers'),
+                "is_potentially_hazardous_asteroid": neo.get('is_potentially_hazardous_asteroid'),
+                "first_close_approach_date": neo.get('close_approach_data', [{}])[0].get('close_approach_date_full', 'N/A')
+            }
+            for neo in result.get('near_earth_objects', [])
+        ]
+    }
+
 
 # --- SpaceX Endpoints ---
 
