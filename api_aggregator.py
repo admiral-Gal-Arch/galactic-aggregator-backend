@@ -17,9 +17,12 @@ load_dotenv()
 NASA_API_KEY = os.getenv("NASA_API_KEY", "DEMO_KEY")
 NOAA_API_KEY = os.getenv("NOAA_API_KEY", "DEMO_NOAA_KEY") 
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "30"))
+# NEW: Slow interval for unreliable APIs (3 minutes)
+SLOW_REFRESH_INTERVAL_SECONDS = 180
 
 # In-memory store for aggregated data
 IN_MEMORY_CACHE: Dict[str, Any] = {}
+ISS_CACHE: Dict[str, Any] = {} # Dedicated cache for slow/unreliable ISS data
 STOP_EVENT = asyncio.Event() 
 
 # Base URLs for clarity
@@ -43,8 +46,7 @@ today = datetime.now().strftime("%Y-%m-%d")
 EXTERNAL_APIS: Dict[str, str] = {
     "nasa_apod": f"{NASA_BASE}/planetary/apod?api_key={NASA_API_KEY}",
     "spacex_latest": f"{SPACEX_BASE}/v5/launches/latest",
-    "iss_location": f"{ISS_BASE}/iss-now.json",
-    "people_in_space": f"{ISS_BASE}/astros.json",
+    # ISS/ASTROS REMOVED from EXTERNAL_APIS list
     "nasa_neo": f"{NASA_BASE}/neo/rest/v1/feed?start_date={today}&end_date={today}&api_key={NASA_API_KEY}",
 }
 
@@ -97,6 +99,9 @@ async def fetch_api_data(url: str, client: httpx.AsyncClient, headers: Optional[
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         print(f"Error: HTTP Error {status_code} for external API: {url}")
+        # IMPORTANT: Return a specific error status code for rate limiting
+        if status_code == 429:
+             return {"error": f"HTTP Status Error 429 (Rate Limited)", "status_code": 429}
         return {"error": f"HTTP Status Error {status_code}"}
 
     except httpx.RequestError as exc:
@@ -111,6 +116,8 @@ async def fetch_api_data(url: str, client: httpx.AsyncClient, headers: Optional[
 async def refresh_and_cache_data():
     """Asynchronously fetches data for the main dashboard metrics."""
     global IN_MEMORY_CACHE
+    global ISS_CACHE # Access the slow cache
+    
     print(f"\n[CACHE REFRESH] Starting data fetch at {datetime.now().isoformat()}")
 
     api_urls = list(EXTERNAL_APIS.values())
@@ -119,7 +126,14 @@ async def refresh_and_cache_data():
         tasks = [fetch_api_data(url, client) for url in api_urls]
         results: List[Dict[str, Any]] = await asyncio.gather(*tasks)
 
-    apod_data, spacex_data, iss_data, astros_data, neo_data = results
+    # Note: Results order must match EXTERNAL_APIS keys order:
+    # nasa_apod, spacex_latest, nasa_neo
+    apod_data, spacex_data, neo_data = results
+    
+    # Safely pull the slow-cached ISS data
+    iss_data = ISS_CACHE.get('iss_location', {"error": "ISS cache not ready"})
+    astros_data = ISS_CACHE.get('people_in_space', {"error": "ISS cache not ready"})
+
 
     def get_safe_value(data: Dict[str, Any], keys: List[str], default_msg: str) -> str:
         if "error" in data:
@@ -134,11 +148,14 @@ async def refresh_and_cache_data():
 
     apod_title = get_safe_value(apod_data, ['title'], 'Error fetching APOD data.')
     spacex_flight_number = get_safe_value(spacex_data, ['flight_number'], 'N/A')
+    
     lat = get_safe_value(iss_data, ['iss_position', 'latitude'], 'N/A')
     lon = get_safe_value(iss_data, ['iss_position', 'longitude'], 'N/A')
     iss_location = f"Lat: {lat}, Lon: {lon}" if lat != 'N/A' else 'N/A'
+    
     count = get_safe_value(astros_data, ['number'], 'N/A')
     people_in_space_count = f"{count} people" if str(count).isdigit() else str(count)
+    
     neo_list: List[Any] = neo_data.get('near_earth_objects', {}).get(today, [])
     
     if "error" in neo_data:
@@ -152,12 +169,54 @@ async def refresh_and_cache_data():
         "iss_location": iss_location,
         "people_in_space_count": people_in_space_count,
         "neo_count": neo_count,
-        "api_count": len(EXTERNAL_APIS),
+        "api_count": len(EXTERNAL_APIS) + 2, # +2 for the slow-refreshed APIs
         "last_updated": datetime.now().isoformat()
     }
     
     IN_MEMORY_CACHE = new_data
     print(f"[CACHE REFRESH] Cache successfully updated at {new_data['last_updated']}")
+
+
+async def iss_slow_refresh_loop():
+    """Asynchronous loop for fetching unreliable/rate-limited ISS data."""
+    global ISS_CACHE
+    current_delay = SLOW_REFRESH_INTERVAL_SECONDS
+    
+    iss_url = f"{ISS_BASE}/iss-now.json"
+    astros_url = f"{ISS_BASE}/astros.json"
+    
+    async with httpx.AsyncClient() as client:
+        while not STOP_EVENT.is_set():
+            try:
+                print(f"[ISS REFRESH] Attempting fetch (Next in {current_delay}s)...")
+                
+                # Fetch ISS Location
+                iss_data = await fetch_api_data(iss_url, client)
+                if "error" not in iss_data:
+                    ISS_CACHE['iss_location'] = iss_data
+                    print("[ISS REFRESH] Location updated successfully.")
+                    current_delay = SLOW_REFRESH_INTERVAL_SECONDS # Reset delay on success
+                elif iss_data.get("status_code") == 429:
+                    current_delay = min(current_delay * 2, 900) # Max 15 minutes
+                    print(f"[ISS REFRESH] Rate Limited (429). Increasing delay to {current_delay}s.")
+                    ISS_CACHE['iss_location'] = {"error": "Rate Limited"}
+                
+                # Fetch Astros
+                astros_data = await fetch_api_data(astros_url, client)
+                if "error" not in astros_data:
+                    ISS_CACHE['people_in_space'] = astros_data
+                    print("[ISS REFRESH] Astros updated successfully.")
+                elif astros_data.get("status_code") == 429:
+                     current_delay = min(current_delay * 2, 900) # Max 15 minutes
+                     ISS_CACHE['people_in_space'] = {"error": "Rate Limited"}
+                     
+                await asyncio.sleep(current_delay)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"[ISS REFRESH] Unhandled error: {e}")
+                await asyncio.sleep(SLOW_REFRESH_INTERVAL_SECONDS * 2) # Extra delay on generic failure
 
 # --- ASYNCHRONOUS CACHE LOOP ---
 
@@ -177,17 +236,21 @@ async def continuous_refresh_async_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start both the main fast refresh and the ISS slow refresh
     app.state.refresh_task = asyncio.create_task(continuous_refresh_async_loop())
+    app.state.iss_task = asyncio.create_task(iss_slow_refresh_loop())
     print(f"[STARTUP] Asynchronous background refresh task started. Interval: {REFRESH_INTERVAL_SECONDS}s")
+    print(f"[STARTUP] ISS slow refresh task started. Base interval: {SLOW_REFRESH_INTERVAL_SECONDS}s")
     
     yield
 
     app.state.refresh_task.cancel()
+    app.state.iss_task.cancel()
     try:
-        await app.state.refresh_task
+        await asyncio.gather(app.state.refresh_task, app.state.iss_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
-    print("[SHUTDOWN] Background refresh task stopped.")
+    print("[SHUTDOWN] All background tasks stopped.")
 
 
 app = FastAPI(
@@ -675,11 +738,11 @@ async def get_spacex_company():
 
 @app.get("/api/iss/iss-now", summary="[Legacy] Get the current ISS location.")
 async def get_iss_now():
-    url = f"{ISS_BASE}/iss-now.json"
-    async with httpx.AsyncClient() as client:
-        result = await fetch_api_data(url, client)
-    if "error" in result: raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"ISS Error: {result['error']}")
-    return result
+    # Use the data safely pulled from the separate ISS_CACHE
+    data = ISS_CACHE.get('iss_location', {})
+    if "error" in data: 
+         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"ISS Location Error: {data['error']}")
+    return data
 
 @app.get("/api/nasa/neo/catalog", summary="[Legacy] Browse paginated NEO catalog.")
 async def get_neo_browse_catalog_legacy(
